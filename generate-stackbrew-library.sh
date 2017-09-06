@@ -103,6 +103,14 @@ for version in "${versions[@]}"; do
 		variantParent="$(awk 'toupper($1) == "FROM" { print $2 }' "$dir/Dockerfile")"
 		variantArches="${parentRepoToArches[$variantParent]}"
 
+		# 7.2 no longer supports s390x
+		if [[ "$version" = 7.* ]] && [ "$version" != '7.0' ] && [ "$version" != '7.1' ]; then
+			variantArches="$(echo " $variantArches " | sed -r -e 's/ s390x//g')"
+		fi
+
+		# arm32v5 takes _way_ too long to build (on the order of days)
+		variantArches="$(echo " $variantArches " | sed -r -e 's/ arm32v5//g')"
+
 		echo
 		cat <<-EOE
 			Tags: $(join ', ' "${variantAliases[@]}")

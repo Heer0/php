@@ -250,6 +250,9 @@ RUN apt-get update && apt-get install -y imagemagick libmagickwand-dev \
 # Enable SqLite3
 RUN docker-php-ext-enable sqlite3 pdo_sqlite
 
+# Enable PCNTL
+RUN docker-php-ext-install -j$(nproc) pcntl
+
 # Install Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
 	&& php composer-setup.php --install-dir=/usr/local/bin/ --filename=composer \

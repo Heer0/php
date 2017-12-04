@@ -1,32 +1,48 @@
-FROM alpine:%%ALPINE_VERSION%%
+#
+# NOTE: THIS DOCKERFILE IS GENERATED VIA "update.sh"
+#
+# PLEASE DO NOT EDIT IT DIRECTLY.
+#
+
+FROM debian:stretch-slim
 
 # persistent / runtime deps
 ENV PHPIZE_DEPS \
 		autoconf \
-		dpkg-dev dpkg \
+		dpkg-dev \
 		file \
 		g++ \
 		gcc \
 		libc-dev \
 		make \
-		pkgconf \
+		pkg-config \
 		re2c
-RUN apk add --no-cache --virtual .persistent-deps \
+RUN apt-get update && apt-get install -y \
+		$PHPIZE_DEPS \
 		ca-certificates \
 		curl \
-		tar \
-		xz \
-# https://github.com/docker-library/php/issues/494
-		libressl
+		libargon2-0 \
+		libedit2 \
+		libsqlite3-0 \
+		libxml2 \
+		xz-utils \
+		# Add in this fork
+		git \
+		tcl \
+		unzip \
+		wget \
+	--no-install-recommends && rm -r /var/lib/apt/lists/*
 
-# ensure www-data user exists
-RUN set -x \
-	&& addgroup -g 82 -S www-data \
-	&& adduser -u 82 -D -S -G www-data www-data
-# 82 is the standard uid/gid for "www-data" in Alpine
-# http://git.alpinelinux.org/cgit/aports/tree/main/apache2/apache2.pre-install?h=v3.3.2
-# http://git.alpinelinux.org/cgit/aports/tree/main/lighttpd/lighttpd.pre-install?h=v3.3.2
-# http://git.alpinelinux.org/cgit/aports/tree/main/nginx-initscripts/nginx-initscripts.pre-install?h=v3.3.2
+# Add Sqlite3
+RUN wget http://sqlite.org/2017/sqlite-src-3190300.zip \
+	&& unzip sqlite-src-3190300.zip \
+	&& rm -f sqlite-src-3190300.zip \
+	&& mv sqlite-src-3190300 /opt/sqlite3 \
+	&& cd /opt/sqlite3 \
+	&& export CFLAGS='-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT=1' \
+	&& ./configure \
+	&& make \
+	&& make install
 
 ENV PHP_INI_DIR /usr/local/etc/php
 RUN mkdir -p $PHP_INI_DIR/conf.d
@@ -44,17 +60,26 @@ ENV PHP_CFLAGS="-fstack-protector-strong -fpic -fpie -O2"
 ENV PHP_CPPFLAGS="$PHP_CFLAGS"
 ENV PHP_LDFLAGS="-Wl,-O1 -Wl,--hash-style=both -pie"
 
-ENV GPG_KEYS %%GPG_KEYS%%
+ENV GPG_KEYS 1729F83938DA44E27BA0F4D3DBDB397470D12172 B1B44D8F021E4E2D6021E995DC9FF8D3EE5AF27F
 
-ENV PHP_VERSION %%PHP_VERSION%%
-ENV PHP_URL="%%PHP_URL%%" PHP_ASC_URL="%%PHP_ASC_URL%%"
-ENV PHP_SHA256="%%PHP_SHA256%%" PHP_MD5="%%PHP_MD5%%"
+ENV PHP_VERSION 7.2.0
+ENV PHP_URL="https://secure.php.net/get/php-7.2.0.tar.xz/from/this/mirror" PHP_ASC_URL="https://secure.php.net/get/php-7.2.0.tar.xz.asc/from/this/mirror"
+ENV PHP_SHA256="87572a6b924670a5d4aac276aaa4a94321936283df391d702c845ffc112db095" PHP_MD5=""
 
 RUN set -xe; \
 	\
-	apk add --no-cache --virtual .fetch-deps \
-		gnupg \
-	; \
+	fetchDeps=' \
+		wget \
+	'; \
+	if ! command -v gpg > /dev/null; then \
+		fetchDeps="$fetchDeps \
+			dirmngr \
+			gnupg \
+		"; \
+	fi; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends $fetchDeps; \
+	rm -rf /var/lib/apt/lists/*; \
 	\
 	mkdir -p /usr/src; \
 	cd /usr/src; \
@@ -78,19 +103,22 @@ RUN set -xe; \
 		rm -rf "$GNUPGHOME"; \
 	fi; \
 	\
-	apk del .fetch-deps
+	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false $fetchDeps
 
 COPY docker-php-source /usr/local/bin/
 
 RUN set -xe \
-	&& apk add --no-cache --virtual .build-deps \
-		$PHPIZE_DEPS \
-		coreutils \
-		curl-dev \
+	&& buildDeps=" \
+		$PHP_EXTRA_BUILD_DEPS \
+		libargon2-0-dev \
+		libcurl4-openssl-dev \
 		libedit-dev \
-		libressl-dev \
+		libsqlite3-dev \
+		libssl-dev \
 		libxml2-dev \
-		sqlite-dev \
+		zlib1g-dev \
+	" \
+	&& apt-get update && apt-get install -y $buildDeps --no-install-recommends && rm -rf /var/lib/apt/lists/* \
 	\
 	&& export CFLAGS="$PHP_CFLAGS" \
 		CPPFLAGS="$PHP_CPPFLAGS" \
@@ -98,10 +126,18 @@ RUN set -xe \
 	&& docker-php-source extract \
 	&& cd /usr/src/php \
 	&& gnuArch="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)" \
+	&& debMultiarch="$(dpkg-architecture --query DEB_BUILD_MULTIARCH)" \
+# https://bugs.php.net/bug.php?id=74125
+	&& if [ ! -d /usr/include/curl ]; then \
+		ln -sT "/usr/include/$debMultiarch/curl" /usr/local/include/curl; \
+	fi \
 	&& ./configure \
 		--build="$gnuArch" \
 		--with-config-file-path="$PHP_INI_DIR" \
 		--with-config-file-scan-dir="$PHP_INI_DIR/conf.d" \
+		\
+		--with-sqlite3=shared,/usr/local \
+		--with-pdo-sqlite=shared,/usr/local \
 		\
 		--disable-cgi \
 		\
@@ -111,6 +147,8 @@ RUN set -xe \
 		--enable-mbstring \
 # --enable-mysqlnd is included here because it's harder to compile after the fact than extensions are (since it's a plugin for several extensions, not an extension in itself)
 		--enable-mysqlnd \
+# https://wiki.php.net/rfc/argon2_password_hash (7.2+)
+		--with-password-argon2 \
 		\
 		--with-curl \
 		--with-libedit \
@@ -120,30 +158,52 @@ RUN set -xe \
 # bundled pcre does not support JIT on s390x
 # https://manpages.debian.org/stretch/libpcre3-dev/pcrejit.3.en.html#AVAILABILITY_OF_JIT_SUPPORT
 		$(test "$gnuArch" = 's390x-linux-gnu' && echo '--without-pcre-jit') \
+		--with-libdir="lib/$debMultiarch" \
 		\
 		$PHP_EXTRA_CONFIGURE_ARGS \
 	&& make -j "$(nproc)" \
 	&& make install \
-	&& { find /usr/local/bin /usr/local/sbin -type f -perm +0111 -exec strip --strip-all '{}' + || true; } \
+	&& { find /usr/local/bin /usr/local/sbin -type f -executable -exec strip --strip-all '{}' + || true; } \
 	&& make clean \
 	&& cd / \
 	&& docker-php-source delete \
 	\
-	&& runDeps="$( \
-		scanelf --needed --nobanner --format '%n#p' --recursive /usr/local \
-			| tr ',' '\n' \
-			| sort -u \
-			| awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
-	)" \
-	&& apk add --no-cache --virtual .php-rundeps $runDeps \
-	\
-	&& apk del .build-deps \
+	&& apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false $buildDeps \
 	\
 # https://github.com/docker-library/php/issues/443
 	&& pecl update-channels \
 	&& rm -rf /tmp/pear ~/.pearrc
 
 COPY docker-php-ext-* docker-php-entrypoint /usr/local/bin/
+
+# Add extension
+
+# Add redis
+RUN pecl install redis-3.1.3 \
+	&& docker-php-ext-enable redis
+
+# Add zip
+RUN apt-get update && apt-get install -y libzip-dev zlib1g-dev \
+	&& docker-php-ext-install -j$(nproc) zip
+
+# Add Imagick
+RUN apt-get update && apt-get install -y imagemagick libmagickwand-dev \
+	&& pecl install imagick \
+	&& docker-php-ext-enable imagick
+
+# Enable SqLite3
+RUN docker-php-ext-enable sqlite3 pdo_sqlite
+
+# Enable PCNTL
+RUN docker-php-ext-install -j$(nproc) pcntl
+
+# Install Composer
+RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
+	&& php composer-setup.php --install-dir=/usr/local/bin/ --filename=composer \
+	&& php -r "unlink('composer-setup.php');"
+
+# Reinstall wget
+RUN apt-get update && apt-get install -y wget
 
 ENTRYPOINT ["docker-php-entrypoint"]
 ##<autogenerated>##

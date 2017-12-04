@@ -1,4 +1,10 @@
-FROM alpine:%%ALPINE_VERSION%%
+#
+# NOTE: THIS DOCKERFILE IS GENERATED VIA "update.sh"
+#
+# PLEASE DO NOT EDIT IT DIRECTLY.
+#
+
+FROM alpine:3.4
 
 # persistent / runtime deps
 ENV PHPIZE_DEPS \
@@ -17,7 +23,7 @@ RUN apk add --no-cache --virtual .persistent-deps \
 		tar \
 		xz \
 # https://github.com/docker-library/php/issues/494
-		libressl
+		openssl
 
 # ensure www-data user exists
 RUN set -x \
@@ -44,11 +50,11 @@ ENV PHP_CFLAGS="-fstack-protector-strong -fpic -fpie -O2"
 ENV PHP_CPPFLAGS="$PHP_CFLAGS"
 ENV PHP_LDFLAGS="-Wl,-O1 -Wl,--hash-style=both -pie"
 
-ENV GPG_KEYS %%GPG_KEYS%%
+ENV GPG_KEYS 0BD78B5F97500D450838F95DFE857D9A90D90EC1 6E4F6AB321FDC07F2C332E3AC2BF0BC433CFC8B3
 
-ENV PHP_VERSION %%PHP_VERSION%%
-ENV PHP_URL="%%PHP_URL%%" PHP_ASC_URL="%%PHP_ASC_URL%%"
-ENV PHP_SHA256="%%PHP_SHA256%%" PHP_MD5="%%PHP_MD5%%"
+ENV PHP_VERSION 5.6.32
+ENV PHP_URL="https://secure.php.net/get/php-5.6.32.tar.xz/from/this/mirror" PHP_ASC_URL="https://secure.php.net/get/php-5.6.32.tar.xz.asc/from/this/mirror"
+ENV PHP_SHA256="8c2b4f721c7475fb9eabda2495209e91ea933082e6f34299d11cba88cd76e64b" PHP_MD5=""
 
 RUN set -xe; \
 	\
@@ -88,7 +94,7 @@ RUN set -xe \
 		coreutils \
 		curl-dev \
 		libedit-dev \
-		libressl-dev \
+		openssl-dev \
 		libxml2-dev \
 		sqlite-dev \
 	\

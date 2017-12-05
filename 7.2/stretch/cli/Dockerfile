@@ -26,23 +26,7 @@ RUN apt-get update && apt-get install -y \
 		libsqlite3-0 \
 		libxml2 \
 		xz-utils \
-		# Add in this fork
-		git \
-		tcl \
-		unzip \
-		wget \
 	--no-install-recommends && rm -r /var/lib/apt/lists/*
-
-# Add Sqlite3
-RUN wget http://sqlite.org/2017/sqlite-src-3190300.zip \
-	&& unzip sqlite-src-3190300.zip \
-	&& rm -f sqlite-src-3190300.zip \
-	&& mv sqlite-src-3190300 /opt/sqlite3 \
-	&& cd /opt/sqlite3 \
-	&& export CFLAGS='-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT=1' \
-	&& ./configure \
-	&& make \
-	&& make install
 
 ENV PHP_INI_DIR /usr/local/etc/php
 RUN mkdir -p $PHP_INI_DIR/conf.d
@@ -106,6 +90,26 @@ RUN set -xe; \
 	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false $fetchDeps
 
 COPY docker-php-source /usr/local/bin/
+
+# Add in this fork
+RUN apt-get update && apt-get install -y \
+	git \
+	tcl \
+	unzip \
+	wget \
+	--no-install-recommends && rm -r /var/lib/apt/lists/*
+
+# Add Sqlite3
+RUN wget http://sqlite.org/2017/sqlite-src-3190300.zip \
+	&& unzip sqlite-src-3190300.zip \
+	&& rm -f sqlite-src-3190300.zip \
+	&& mv sqlite-src-3190300 /opt/sqlite3 \
+	&& cd /opt/sqlite3 \
+	&& export CFLAGS='-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT=1' \
+	&& ./configure \
+	&& make \
+	&& make install
+# =================
 
 RUN set -xe \
 	&& buildDeps=" \
